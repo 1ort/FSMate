@@ -2,6 +2,7 @@ import unittest
 from enum import Enum, auto
 
 from fsmate import StateDescriptor, ImpossibleTransitionError
+from fsmate._state import AttributeStateStorage
 
 
 class State(Enum):
@@ -35,14 +36,12 @@ class TestStateAttribute(unittest.TestCase):
 
     def test_custom_atribute_change(self):
         class Stub:
-            state = StateDescriptor(State, State.A, attr_name='state_attribute')
+            state_attribute: State = State.A
+            state = StateDescriptor(State, state_storage=AttributeStateStorage('state_attribute'))
 
         obj = Stub()
 
         self.assertEqual(obj.state, State.A)
-
-        with self.assertRaises(AttributeError):
-            obj.state_attribute
 
         obj.state_attribute = State.B
         self.assertEqual(obj.state, State.B)

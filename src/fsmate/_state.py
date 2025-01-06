@@ -12,7 +12,6 @@ class StateDescriptor:
         self._all_states = states
         self._initial_state = initial_state
         self._attr_name = attr_name
-        self._has_owner = False
 
     def __set_name__(self, owner: type, attr_name: str) -> None:
         """
@@ -25,7 +24,6 @@ class StateDescriptor:
                 attr_name,
             )
         self._attr_name = self._attr_name or '_' + attr_name
-        self._has_owner = True
 
     def __get__(self, instance: object, objtype: Optional[type]):
         """

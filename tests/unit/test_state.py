@@ -119,3 +119,31 @@ class TestTransitions(unittest.TestCase):
         self.obj._state = State.B
         with self.assertRaises(ImpossibleTransitionError):
             self.obj.to_b_from_a_or_c()
+
+
+class TestMethodOverload(unittest.TestCase):
+    def setUp(self) -> None:
+        class Stub:
+            state = StateDescriptor(State, State.A)
+
+            to_b = state.transition(State.A, State.B)
+            to_c = state.transition(State.B, State.C)
+
+            @state.dispatch
+            def foo(self):
+                return 0
+
+            @foo.overload(State.B)
+            def _(self):
+                return 1
+
+        self.obj = Stub()
+
+    def test_overload(self):
+        self.assertEqual(self.obj.foo(), 0)
+
+        self.obj.to_b()
+        self.assertEqual(self.obj.foo(), 1)
+
+        self.obj.to_c()
+        self.assertEqual(self.obj.foo(), 0)

@@ -59,6 +59,41 @@ class StateTransition:
         return _transition
 
 
+class StateDispatchMethod:
+    def __init__(
+        self, all_states: type[Enum], fallback: Callable, state_storage: StateStorage
+    ) -> None:
+        self._all_states = all_states
+        self._state_storage = state_storage
+        self._dispatch_table = {}
+        self._fallback = fallback
+
+    def __get__(self, instance, objtype):
+        if instance is None:
+            return self
+
+        state = self._state_storage.get_state(instance)
+        dispatced = self._dispatch_table.get(state) or self._fallback
+
+        def dispatched_method(*args, **kwargs):
+            return dispatced(instance, *args, **kwargs)
+
+        return dispatched_method
+
+    def overload(self, state: Enum):
+        if state not in self._all_states:
+            raise ValueError('Target state not found', state)
+
+        if state in self._dispatch_table:
+            raise ValueError('Method is already overloaded for state', state)
+
+        def deco(meth):
+            self._dispatch_table[state] = meth
+            return self
+
+        return deco
+
+
 class StateDescriptor:
     def __init__(
         self,
@@ -139,4 +174,9 @@ class StateDescriptor:
 
         return StateTransition(
             source, dest, ProxyStateStorage(self._get_state, self._force_set_state)
+        )
+
+    def dispatch(self, method):
+        return StateDispatchMethod(
+            self._all_states, method, ProxyStateStorage(self._get_state, self._force_set_state)
         )

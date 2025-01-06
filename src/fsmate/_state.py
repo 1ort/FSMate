@@ -33,6 +33,32 @@ class ProxyStateStorage:
         self.set_state = setter
 
 
+class StateTransition:
+    """
+    Retrieves state of the object and checks if the transition is possible.
+    Updates state if so.
+    Raises ImpossibleTransitionError otherwise
+    """
+
+    def __init__(self, source: Collection[Enum], dest: Enum, state_storage: StateStorage) -> None:
+        self._source = source
+        self._dest = dest
+        self._storage = state_storage
+
+    def __get__(self, instance, objtype) -> Union['StateTransition', Callable[[], None]]:
+        if instance is None:
+            return self
+
+        def _transition() -> None:
+            state = self._storage.get_state(instance)
+            if state in self._source:
+                self._storage.set_state(instance, self._dest)
+            else:
+                raise ImpossibleTransitionError()
+
+        return _transition
+
+
 class StateDispatcher:
     def __init__(
         self, state_storage: StateStorage, all_states: type[Enum], fallback: Callable
@@ -62,62 +88,22 @@ class StateDispatcher:
         return func(*args, **kwargs)
 
 
-class StateTransition:
-    """
-    Retrieves state of the object and checks if the transition is possible.
-    Updates state if so.
-    Raises ImpossibleTransitionError otherwise
-    """
-
-    def __init__(self, source: Collection[Enum], dest: Enum, state_storage: StateStorage) -> None:
-        self._source = source
-        self._dest = dest
-        self._storage = state_storage
-
-    def __get__(self, instance, objtype) -> Union['StateTransition', Callable[[], None]]:
-        if instance is None:
-            return self
-
-        def _transition() -> None:
-            state = self._storage.get_state(instance)
-            if state in self._source:
-                self._storage.set_state(instance, self._dest)
-            else:
-                raise ImpossibleTransitionError()
-
-        return _transition
-
-
-class StateDispatchMethod:
-    def __init__(
-        self, all_states: type[Enum], fallback: Callable, state_storage: StateStorage
-    ) -> None:
-        self._all_states = all_states
-        self._state_storage = state_storage
-        self._dispatch_table = {}
-        self._fallback = fallback
+class StateDispatchedMethod:
+    def __init__(self, dispatcher: StateDispatcher) -> None:
+        self._dispatcher = dispatcher
 
     def __get__(self, instance, objtype):
         if instance is None:
             return self
 
-        state = self._state_storage.get_state(instance)
-        dispatced = self._dispatch_table.get(state) or self._fallback
-
         def dispatched_method(*args, **kwargs):
-            return dispatced(instance, *args, **kwargs)
+            return self._dispatcher.dispatch(instance, instance, *args, **kwargs)
 
         return dispatched_method
 
-    def overload(self, state: Enum):
-        if state not in self._all_states:
-            raise ValueError('Target state not found', state)
-
-        if state in self._dispatch_table:
-            raise ValueError('Method is already overloaded for state', state)
-
+    def overload(self, *states: Enum):
         def deco(meth):
-            self._dispatch_table[state] = meth
+            self._dispatcher.register(meth, *states)
             return self
 
         return deco
@@ -206,6 +192,7 @@ class StateDescriptor:
         )
 
     def dispatch(self, method):
-        return StateDispatchMethod(
-            self._all_states, method, ProxyStateStorage(self._get_state, self._force_set_state)
+        dispatcher = StateDispatcher(
+            ProxyStateStorage(self._get_state, self._force_set_state), self._all_states, method
         )
+        return StateDispatchedMethod(dispatcher)

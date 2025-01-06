@@ -2,13 +2,19 @@ import unittest
 from enum import Enum, auto
 
 from fsmate import StateDescriptor, ImpossibleTransitionError
-from fsmate._state import AttributeStateStorage
+from fsmate._state import AttributeStateStorage, StateDispatcher
 
 
 class State(Enum):
     A = auto()
     B = auto()
     C = auto()
+
+
+class WrongState(Enum):
+    D = auto()
+    E = auto()
+    F = auto()
 
 
 class TestStateAttribute(unittest.TestCase):
@@ -48,34 +54,26 @@ class TestStateAttribute(unittest.TestCase):
 
 
 class TestDeclareTransitions(unittest.TestCase):
-    def setUp(self) -> None:
-        class WrongState(Enum):
-            D = auto()
-            E = auto()
-            F = auto()
-
-        self.wrong_state = WrongState
-
     def test_destination_state_not_found(self):
         with self.assertRaisesRegex(ValueError, 'Destination state not found'):
 
             class _:
                 state = StateDescriptor(State, State.A)
-                to_d = state.transition(State.A, self.wrong_state.D)
+                to_d = state.transition(State.A, WrongState.D)
 
     def test_source_state_not_found(self):
         with self.assertRaisesRegex(ValueError, 'Source state not found'):
 
             class _:
                 state = StateDescriptor(State, State.A)
-                from_d_to_a = state.transition(self.wrong_state.D, State.A)
+                from_d_to_a = state.transition(WrongState.D, State.A)
 
     def test_one_of_sources_not_found(self):
         with self.assertRaisesRegex(ValueError, 'Source state not found'):
 
             class _:
                 state = StateDescriptor(State, State.A)
-                from_b_or_d_to_a = state.transition([State.B, self.wrong_state.D], State.A)
+                from_b_or_d_to_a = state.transition([State.B, WrongState.D], State.A)
 
 
 class TestTransitions(unittest.TestCase):
@@ -122,7 +120,38 @@ class TestTransitions(unittest.TestCase):
 
 
 class TestMethodOverload(unittest.TestCase):
-    def setUp(self) -> None:
+    def test_state_dispatcher(self):
+        class StubStateStorage:
+            def get_state(self, instance):
+                return self.state
+
+            def set_state(self, instance, state):
+                self.state = state
+
+        def fallback(x):
+            return x
+
+        def b_func(x):
+            return x * 2
+
+        storage = StubStateStorage()
+        storage.state = State.A
+        dispatcher = StateDispatcher(storage, State, fallback)
+        dispatcher.register(b_func, State.B)
+
+        self.assertEqual(dispatcher.dispatch(None, 10), 10)
+        storage.set_state(None, State.B)
+        self.assertEqual(dispatcher.dispatch(None, 10), 20)
+        storage.set_state(None, State.C)
+        self.assertEqual(dispatcher.dispatch(None, 10), 10)
+
+        with self.assertRaisesRegex(ValueError, 'Target state not found'):
+            dispatcher.register(lambda x: x, WrongState.D)
+
+        with self.assertRaisesRegex(ValueError, 'Function is already overloaded for state'):
+            dispatcher.register(lambda x: x, State.B)
+
+    def test_overload(self):
         class Stub:
             state = StateDescriptor(State, State.A)
 
@@ -137,13 +166,12 @@ class TestMethodOverload(unittest.TestCase):
             def _(self):
                 return 1
 
-        self.obj = Stub()
+        obj = Stub()
 
-    def test_overload(self):
-        self.assertEqual(self.obj.foo(), 0)
+        self.assertEqual(obj.foo(), 0)
 
-        self.obj.to_b()
-        self.assertEqual(self.obj.foo(), 1)
+        obj.to_b()
+        self.assertEqual(obj.foo(), 1)
 
-        self.obj.to_c()
-        self.assertEqual(self.obj.foo(), 0)
+        obj.to_c()
+        self.assertEqual(obj.foo(), 0)

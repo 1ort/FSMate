@@ -33,6 +33,35 @@ class ProxyStateStorage:
         self.set_state = setter
 
 
+class StateDispatcher:
+    def __init__(
+        self, state_storage: StateStorage, all_states: type[Enum], fallback: Callable
+    ) -> None:
+        self._all_states = all_states
+        self._fallback = fallback
+        self._state_storage = state_storage
+        self._dispatch_table = {}
+
+    def register(self, func: Callable, *states: Enum):
+        for state in states:
+            if state not in self._all_states:
+                raise ValueError('Target state not found', state)
+
+            if state in self._dispatch_table:
+                raise ValueError('Function is already overloaded for state', state)
+
+            self._dispatch_table[state] = func
+
+    def _dispatch(self, state: Enum) -> Callable:
+        return self._dispatch_table.get(state, self._fallback)
+
+    def dispatch(self, instance, *args, **kwargs) -> Any:
+        current_state = self._state_storage.get_state(instance)
+        func = self._dispatch(current_state)
+
+        return func(*args, **kwargs)
+
+
 class StateTransition:
     """
     Retrieves state of the object and checks if the transition is possible.

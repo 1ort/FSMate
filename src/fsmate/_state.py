@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Collection
 from enum import Enum
-from typing import Any, Callable, Optional, Protocol, Union
+from typing import Any, Callable, Generic, NoReturn, Optional, ParamSpec, Protocol, TypeVar, Union
 
 
 class ImpossibleTransitionError(Exception):
@@ -21,15 +21,17 @@ class AttributeStateStorage:
     def __init__(self, attr_name: str) -> None:
         self._attr_name = attr_name
 
-    def get_state(self, instance: object):
-        return getattr(instance, self._attr_name)
+    def get_state(self, instance: object) -> Enum:
+        return getattr(instance, self._attr_name)  # type: ignore[no-any-return]
 
-    def set_state(self, instance: object, state: Enum):
+    def set_state(self, instance: object, state: Enum) -> None:
         return setattr(instance, self._attr_name, state)
 
 
 class ProxyStateStorage:
-    def __init__(self, getter, setter) -> None:
+    def __init__(
+        self, getter: Callable[[object], Enum], setter: Callable[[object, Enum], None]
+    ) -> None:
         self.get_state = getter
         self.set_state = setter
 
@@ -46,7 +48,9 @@ class StateTransition:
         self._dest = dest
         self._storage = state_storage
 
-    def __get__(self, instance, objtype) -> Union['StateTransition', Callable[[], None]]:
+    def __get__(
+        self, instance: object, objtype: type
+    ) -> Union['StateTransition', Callable[[], None]]:
         if instance is None:
             return self
 
@@ -59,17 +63,24 @@ class StateTransition:
 
         return _transition
 
+    def __call__(self) -> None:
+        pass
 
-class StateDispatcher:
+
+T = TypeVar('T')
+P = ParamSpec('P')
+
+
+class StateDispatcher(Generic[P, T]):
     def __init__(
-        self, state_storage: StateStorage, all_states: type[Enum], fallback: Callable
+        self, state_storage: StateStorage, all_states: type[Enum], fallback: Callable[P, T]
     ) -> None:
         self._all_states = all_states
         self._fallback = fallback
         self._state_storage = state_storage
-        self._dispatch_table = {}
+        self._dispatch_table: dict[Enum, Callable[P, T]] = {}
 
-    def register(self, func: Callable, *states: Enum):
+    def register(self, func: Callable[P, T], *states: Enum) -> None:
         for state in states:
             if state not in self._all_states:
                 raise ValueError('Target state not found', state)
@@ -79,31 +90,31 @@ class StateDispatcher:
 
             self._dispatch_table[state] = func
 
-    def _dispatch(self, state: Enum) -> Callable:
+    def _dispatch(self, state: Enum) -> Callable[P, T]:
         return self._dispatch_table.get(state, self._fallback)
 
-    def dispatch(self, instance, *args, **kwargs) -> Any:
+    def dispatch(self, instance: object, *args: P.args, **kwargs: P.kwargs) -> T:
         current_state = self._state_storage.get_state(instance)
         func = self._dispatch(current_state)
 
         return func(*args, **kwargs)
 
 
-class StateDispatchedMethod:
-    def __init__(self, dispatcher: StateDispatcher) -> None:
+class StateDispatchedMethod(Generic[P, T]):
+    def __init__(self, dispatcher: StateDispatcher[P, T]) -> None:
         self._dispatcher = dispatcher
 
-    def __get__(self, instance, objtype):
+    def __get__(self, instance: object, objtype: type) -> Callable[P, T]:
         if instance is None:
-            return self
+            return self  # type: ignore[return-value]
 
-        def dispatched_method(*args, **kwargs):
-            return self._dispatcher.dispatch(instance, instance, *args, **kwargs)
+        def dispatched_method(*args: P.args, **kwargs: P.kwargs) -> T:
+            return self._dispatcher.dispatch(instance, instance, *args, **kwargs)  # type: ignore[arg-type]
 
         return dispatched_method
 
-    def overload(self, *states: Enum):
-        def deco(meth):
+    def overload(self, *states: Enum) -> Callable[[Callable[P, T]], 'StateDispatchedMethod[P, T]']:
+        def deco(meth: Callable[P, T]) -> 'StateDispatchedMethod[P, T]':
             self._dispatcher.register(meth, *states)
             return self
 
@@ -123,7 +134,7 @@ class StateDescriptor:
         self._all_states = states
         self._initial_state = initial_state
         self._state_storage = state_storage
-        self._attr_name = None
+        self._attr_name: Optional[str] = None
 
     def __set_name__(self, owner: type, attr_name: str) -> None:
         """
@@ -131,14 +142,14 @@ class StateDescriptor:
         """
         self._attr_name = attr_name
 
-    def __get__(self, instance: object, objtype: Optional[type]):
+    def __get__(self, instance: object, objtype: Optional[type]) -> Enum:
         """
         Get current state from owner object
         """
 
         # return descriptor itself when called from class
         if instance is None:
-            return self
+            return self  # type: ignore[return-value]
 
         return self._get_state(instance)
 
@@ -150,7 +161,7 @@ class StateDescriptor:
             if self._attr_name is None:
                 raise ValueError('Cannot get state from unitialized descriptor')
 
-            return getattr(
+            return getattr(  # type: ignore[return-value]
                 instance,
                 '_' + self._attr_name,
                 self._initial_state,
@@ -168,13 +179,13 @@ class StateDescriptor:
                 state,
             )
 
-    def __set__(self, instance: object, value: Any):
+    def __set__(self, instance: object, value: Any) -> NoReturn:
         """
         Forbit directly set state
         """
         raise AttributeError('Cannot change state directly. Use transitions')
 
-    def transition(self, source: Union[Enum, Collection[Enum]], dest: Enum):
+    def transition(self, source: Union[Enum, Collection[Enum]], dest: Enum) -> StateTransition:
         """
         Create new transition callable
         """
@@ -192,8 +203,9 @@ class StateDescriptor:
             source, dest, ProxyStateStorage(self._get_state, self._force_set_state)
         )
 
-    def dispatch(self, method):
+    def dispatch(self, method: Callable[P, T]) -> StateDispatchedMethod[P, T]:
         dispatcher = StateDispatcher(
             ProxyStateStorage(self._get_state, self._force_set_state), self._all_states, method
         )
-        return StateDispatchedMethod(dispatcher)
+        dispatched_method = StateDispatchedMethod(dispatcher)
+        return dispatched_method

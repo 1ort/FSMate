@@ -20,7 +20,9 @@ classifiers = [
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",
 ]
-dependencies = []
+dependencies = [
+    "typing-extensions>=4.12.2",
+]
 
 [project.urls]
 "Source" = "https://github.com/1ort/FSMate"

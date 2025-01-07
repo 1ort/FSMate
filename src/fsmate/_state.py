@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from collections.abc import Collection
 from enum import Enum
-from typing import Any, Callable, Generic, NoReturn, Optional, ParamSpec, Protocol, TypeVar, Union
+from typing import Any, Callable, Generic, NoReturn, Optional, Protocol, TypeVar, Union
+from typing_extensions import ParamSpec
 
 
 class ImpossibleTransitionError(Exception):

@@ -1,6 +1,6 @@
 from collections.abc import Collection
-from typing import Any, Optional, Union
 from enum import Enum
+from typing import Any, Optional, Union
 
 
 class ImpossibleTransitionError(Exception):

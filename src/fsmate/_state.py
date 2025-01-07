@@ -1,7 +1,8 @@
 from __future__ import annotations
+
 from collections.abc import Collection
-from typing import Any, Callable, Optional, Union, Protocol
 from enum import Enum
+from typing import Any, Callable, Optional, Protocol, Union
 
 
 class ImpossibleTransitionError(Exception):

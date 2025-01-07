@@ -1,7 +1,7 @@
 import unittest
 from enum import Enum, auto
 
-from fsmate import StateDescriptor, ImpossibleTransitionError
+from fsmate import ImpossibleTransitionError, StateDescriptor
 from fsmate._state import AttributeStateStorage, StateDispatcher
 
 

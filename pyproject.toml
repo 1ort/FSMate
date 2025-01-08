@@ -20,7 +20,9 @@ classifiers = [
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",
 ]
-dependencies = []
+dependencies = [
+    "typing-extensions>=4.12.2",
+]
 
 [project.urls]
 "Source" = "https://github.com/1ort/FSMate"
@@ -30,3 +32,18 @@ dependencies = []
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.mypy]
+disallow_incomplete_defs = "True"
+disallow_untyped_calls = "True"
+disallow_untyped_decorators = "True"
+disallow_untyped_defs = "True"
+disable_error_code = "annotation-unchecked"
+[[tool.mypy.overrides]]
+module = 'tests.*'
+disallow_untyped_defs = "False"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.14.1",
+]

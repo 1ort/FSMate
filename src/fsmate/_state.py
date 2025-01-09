@@ -49,6 +49,8 @@ class StateTransition:
         self._dest = dest
         self._storage = state_storage
 
+        self._callbacks: list[Callable] = []
+
     def __get__(
         self, instance: object, objtype: type
     ) -> Union['StateTransition', Callable[[], None]]:
@@ -57,15 +59,23 @@ class StateTransition:
 
         def _transition() -> None:
             state = self._storage.get_state(instance)
-            if state in self._source:
-                self._storage.set_state(instance, self._dest)
-            else:
+            if state not in self._source:
                 raise ImpossibleTransitionError()
+
+            self._storage.set_state(instance, self._dest)
+            for callback in self._callbacks:
+                callback(instance, state, self._dest)
 
         return _transition
 
     def __call__(self) -> None:
         pass
+
+    def __repr__(self) -> str:
+        return f'{self.__class__.__name__}(source={self._source!r}, dest={self._dest!r}, state_storage={self._storage!r})'
+
+    def _register_callback(self, func: Callable) -> None:
+        self._callbacks.append(func)
 
 
 T = TypeVar('T')
@@ -136,6 +146,7 @@ class StateDescriptor:
         self._initial_state = initial_state
         self._state_storage = state_storage
         self._attr_name: Optional[str] = None
+        self._transitions: list[StateTransition] = []
 
     def __set_name__(self, owner: type, attr_name: str) -> None:
         """
@@ -200,9 +211,12 @@ class StateDescriptor:
             if source_state not in self._all_states:
                 raise ValueError('Source state not found', source)
 
-        return StateTransition(
+        transition = StateTransition(
             source, dest, ProxyStateStorage(self._get_state, self._force_set_state)
         )
+        self._transitions.append(transition)
+
+        return transition
 
     def dispatch(self, method: Callable[P, T]) -> StateDispatchedMethod[P, T]:
         dispatcher = StateDispatcher(
@@ -210,3 +224,22 @@ class StateDescriptor:
         )
         dispatched_method = StateDispatchedMethod(dispatcher)
         return dispatched_method
+
+    def on_transition(
+        self, *transitions: StateTransition
+    ) -> Callable[[Callable[[object, Enum, Enum], Any]], Callable[[object, Enum, Enum], Any]]:
+        if transitions:
+            for transition in transitions:
+                if transition not in self._transitions:
+                    raise ValueError('Transition not found in current state machine', transition)
+        else:
+            transitions = self._transitions  # type: ignore[assignment]
+
+        def wrapper(
+            func: Callable[[object, Enum, Enum], Any],
+        ) -> Callable[[object, Enum, Enum], Any]:
+            for transition in transitions:
+                transition._register_callback(func)
+            return func
+
+        return wrapper

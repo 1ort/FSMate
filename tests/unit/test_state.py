@@ -3,7 +3,7 @@ from enum import Enum, auto
 
 from fsmate import ImpossibleTransitionError, StateDescriptor
 from fsmate._state import AttributeStateStorage, StateDispatcher
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, call
 
 
 class State(Enum):
@@ -180,10 +180,7 @@ class TestMethodOverload(unittest.TestCase):
 
 class TestCallbacks(unittest.TestCase):
     def test_transition_callbacks(self) -> None:
-        to_a_mock = MagicMock()
-        to_b_mock = MagicMock()
-        to_c_mock = MagicMock()
-        to_any_mock = MagicMock()
+        callback_mock = MagicMock()
 
         class Stub:
             state = StateDescriptor(State, State.A)
@@ -194,64 +191,69 @@ class TestCallbacks(unittest.TestCase):
 
             @state.on_transition(to_b)  # type: ignore
             def on_to_b(self, from_state: State, to_state: State) -> None:
-                to_b_mock(self, from_state, to_state)
+                callback_mock('to_b', self, from_state, to_state)
 
             @state.on_transition(to_c)  # type: ignore
             def on_to_c(self, from_state: State, to_state: State) -> None:
-                to_c_mock(self, from_state, to_state)
+                callback_mock('to_c', self, from_state, to_state)
 
             @state.on_transition(to_a)  # type: ignore
             def on_to_a(self, from_state: State, to_state: State) -> None:
-                to_a_mock(self, from_state, to_state)
+                callback_mock('to_a', self, from_state, to_state)
+
+            @state.on_transition(to_b, to_c)  # type: ignore
+            def on_to_b_to_c(self, from_state: State, to_state: State):
+                callback_mock('to_b_to_c', self, from_state, to_state)
 
             @state.on_transition  # type: ignore
             def on_to_any(self, from_state: State, to_state: State) -> None:
-                to_any_mock(self, from_state, to_state)
+                callback_mock('to_any', self, from_state, to_state)
 
         obj = Stub()
 
         obj.to_b()
-        to_a_mock.assert_not_called()
-        to_b_mock.assert_called_once_with(obj, State.A, State.B)
-        to_any_mock.assert_called_once_with(obj, State.A, State.B)
-        to_c_mock.assert_not_called()
-        to_a_mock.reset_mock()
-        to_b_mock.reset_mock()
-        to_c_mock.reset_mock()
-        to_any_mock.reset_mock()
+        callback_mock.assert_has_calls(
+            [
+                call('to_b', obj, State.A, State.B),
+                call('to_b_to_c', obj, State.A, State.B),
+                call('to_any', obj, State.A, State.B),
+            ]
+        )
+        callback_mock.reset_mock()
 
         obj.to_c()
-        to_a_mock.assert_not_called()
-        to_b_mock.assert_not_called()
-        to_c_mock.assert_called_once_with(obj, State.B, State.C)
-        to_any_mock.assert_called_once_with(obj, State.B, State.C)
-        to_a_mock.reset_mock()
-        to_b_mock.reset_mock()
-        to_c_mock.reset_mock()
-        to_any_mock.reset_mock()
+        callback_mock.assert_has_calls(
+            [
+                call('to_c', obj, State.B, State.C),
+                call('to_b_to_c', obj, State.B, State.C),
+                call('to_any', obj, State.B, State.C),
+            ]
+        )
+        callback_mock.reset_mock()
 
         obj.to_a()
-        to_a_mock.assert_called_once_with(obj, State.C, State.A)
-        to_any_mock.assert_called_once_with(obj, State.C, State.A)
-        to_b_mock.assert_not_called()
-        to_c_mock.assert_not_called()
-        to_a_mock.reset_mock()
-        to_b_mock.reset_mock()
-        to_c_mock.reset_mock()
-        to_any_mock.reset_mock()
+        callback_mock.assert_has_calls(
+            [
+                call('to_a', obj, State.C, State.A),
+                call('to_any', obj, State.C, State.A),
+            ]
+        )
+        callback_mock.reset_mock()
 
         obj.to_b()
-        to_a_mock.assert_not_called()
-        to_b_mock.assert_called_once_with(obj, State.A, State.B)
-        to_any_mock.assert_called_once_with(obj, State.A, State.B)
-        to_c_mock.assert_not_called()
-        to_a_mock.reset_mock()
-        to_b_mock.reset_mock()
-        to_c_mock.reset_mock()
-        to_any_mock.reset_mock()
+        callback_mock.assert_has_calls(
+            [
+                call('to_b', obj, State.A, State.B),
+                call('to_b_to_c', obj, State.A, State.B),
+                call('to_any', obj, State.A, State.B),
+            ]
+        )
+        callback_mock.reset_mock()
 
         obj.to_a()
-        to_a_mock.assert_called_once_with(obj, State.B, State.A)
-        to_any_mock.assert_called_once_with(obj, State.B, State.A)
-        to_b_mock.assert_not_called()
-        to_c_mock.assert_not_called()
+        callback_mock.assert_has_calls(
+            [
+                call('to_a', obj, State.B, State.A),
+                call('to_any', obj, State.B, State.A),
+            ]
+        )

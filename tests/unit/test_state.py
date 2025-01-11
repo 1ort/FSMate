@@ -183,6 +183,7 @@ class TestCallbacks(unittest.TestCase):
         to_a_mock = MagicMock()
         to_b_mock = MagicMock()
         to_c_mock = MagicMock()
+        to_any_mock = MagicMock()
 
         class Stub:
             state = StateDescriptor(State, State.A)
@@ -203,44 +204,54 @@ class TestCallbacks(unittest.TestCase):
             def on_to_a(self, from_state: State, to_state: State) -> None:
                 to_a_mock(self, from_state, to_state)
 
+            @state.on_transition  # type: ignore
+            def on_to_any(self, from_state: State, to_state: State) -> None:
+                to_any_mock(self, from_state, to_state)
+
         obj = Stub()
 
         obj.to_b()
         to_a_mock.assert_not_called()
         to_b_mock.assert_called_once_with(obj, State.A, State.B)
+        to_any_mock.assert_called_once_with(obj, State.A, State.B)
         to_c_mock.assert_not_called()
         to_a_mock.reset_mock()
         to_b_mock.reset_mock()
         to_c_mock.reset_mock()
+        to_any_mock.reset_mock()
 
         obj.to_c()
         to_a_mock.assert_not_called()
         to_b_mock.assert_not_called()
         to_c_mock.assert_called_once_with(obj, State.B, State.C)
+        to_any_mock.assert_called_once_with(obj, State.B, State.C)
         to_a_mock.reset_mock()
         to_b_mock.reset_mock()
         to_c_mock.reset_mock()
+        to_any_mock.reset_mock()
 
         obj.to_a()
         to_a_mock.assert_called_once_with(obj, State.C, State.A)
+        to_any_mock.assert_called_once_with(obj, State.C, State.A)
         to_b_mock.assert_not_called()
         to_c_mock.assert_not_called()
         to_a_mock.reset_mock()
         to_b_mock.reset_mock()
         to_c_mock.reset_mock()
+        to_any_mock.reset_mock()
 
         obj.to_b()
         to_a_mock.assert_not_called()
         to_b_mock.assert_called_once_with(obj, State.A, State.B)
+        to_any_mock.assert_called_once_with(obj, State.A, State.B)
         to_c_mock.assert_not_called()
         to_a_mock.reset_mock()
         to_b_mock.reset_mock()
         to_c_mock.reset_mock()
+        to_any_mock.reset_mock()
 
         obj.to_a()
         to_a_mock.assert_called_once_with(obj, State.B, State.A)
+        to_any_mock.assert_called_once_with(obj, State.B, State.A)
         to_b_mock.assert_not_called()
         to_c_mock.assert_not_called()
-        to_a_mock.reset_mock()
-        to_b_mock.reset_mock()
-        to_c_mock.reset_mock()

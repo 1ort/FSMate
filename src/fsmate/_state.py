@@ -240,19 +240,28 @@ class StateDescriptor:
     def on_transition(
         self, *transitions: StateTransition
     ) -> Callable[[Callable[[object, Enum, Enum], Any]], Callable[[object, Enum, Enum], Any]]:
-        if transitions:
-            for transition in transitions:
-                if transition not in self._transitions:
-                    raise ValueError('Transition not found in current state machine', transition)
-        else:
-            transitions = self._transitions  # type: ignore[assignment]
-
         def wrapper(
             func: Callable[[object, Enum, Enum], Any],
         ) -> Callable[[object, Enum, Enum], Any]:
             for transition in transitions:
                 transition._register_callback(func)
             return func
+
+        if (
+            len(transitions) == 1
+            and callable(transitions[0])
+            and not isinstance(transitions[0], StateTransition)
+        ):
+            func = transitions[0]
+            transitions = self._transitions  # type: ignore[assignment]
+            return wrapper(func)
+
+        elif not transitions:
+            transitions = self._transitions  # type: ignore[assignment]
+        else:
+            for transition in transitions:
+                if transition not in self._transitions:
+                    raise ValueError('Transition not found in current state machine', transition)
 
         return wrapper
 

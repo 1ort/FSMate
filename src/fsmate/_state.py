@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import defaultdict
 from collections.abc import Collection
 from enum import Enum
 from typing import Any, Callable, Generic, NoReturn, Optional, Protocol, TypeVar, Union
@@ -147,6 +148,12 @@ class StateDescriptor:
         self._state_storage = state_storage
         self._attr_name: Optional[str] = None
         self._transitions: list[StateTransition] = []
+        self._enter_state_callbacks: dict[Enum, set[Callable[[object, Enum, Enum], Any]]] = (
+            defaultdict(set)
+        )
+        self._exit_state_callbacks: dict[Enum, set[Callable[[object, Enum, Enum], Any]]] = (
+            defaultdict(set)
+        )
 
     def __set_name__(self, owner: type, attr_name: str) -> None:
         """
@@ -180,16 +187,21 @@ class StateDescriptor:
             )
 
     def _force_set_state(self, instance: object, state: Enum) -> None:
+        current_state = self._get_state(instance)
         if self._state_storage:
-            return self._state_storage.set_state(instance, state)
+            self._state_storage.set_state(instance, state)
         else:
             if self._attr_name is None:
                 raise ValueError('Cannot set state via unitialized descriptor')
-            return setattr(
+            setattr(
                 instance,
                 '_' + self._attr_name,
                 state,
             )
+        for callback in self._exit_state_callbacks[current_state]:
+            callback(instance, current_state, state)
+        for callback in self._enter_state_callbacks[state]:
+            callback(instance, current_state, state)
 
     def __set__(self, instance: object, value: Any) -> NoReturn:
         """
@@ -240,6 +252,44 @@ class StateDescriptor:
         ) -> Callable[[object, Enum, Enum], Any]:
             for transition in transitions:
                 transition._register_callback(func)
+            return func
+
+        return wrapper
+
+    def on_state_exited(
+        self, *states: Enum
+    ) -> Callable[[Callable[[object, Enum, Enum], Any]], Callable[[object, Enum, Enum], Any]]:
+        if states:
+            for state in states:
+                if state not in self._all_states:
+                    raise ValueError('Target state not found', state)
+        else:
+            states = tuple(self._all_states)
+
+        def wrapper(
+            func: Callable[[object, Enum, Enum], Any],
+        ) -> Callable[[object, Enum, Enum], Any]:
+            for state in states:
+                self._exit_state_callbacks[state].add(func)
+            return func
+
+        return wrapper
+
+    def on_state_entered(
+        self, *states: Enum
+    ) -> Callable[[Callable[[object, Enum, Enum], Any]], Callable[[object, Enum, Enum], Any]]:
+        if states:
+            for state in states:
+                if state not in self._all_states:
+                    raise ValueError('Target state not found', state)
+        else:
+            states = tuple(self._all_states)
+
+        def wrapper(
+            func: Callable[[object, Enum, Enum], Any],
+        ) -> Callable[[object, Enum, Enum], Any]:
+            for state in states:
+                self._enter_state_callbacks[state].add(func)
             return func
 
         return wrapper

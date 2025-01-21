@@ -42,7 +42,7 @@ class GarageDoor:
 
     @state.dispatch
     def push_button(self):
-        self.alarm.beep()  # do nothing by default
+        self.alarm.beep()  # default behavior
 
     @push_button.overload(DoorState.closed)
     def push_button_closed(self):
@@ -70,12 +70,13 @@ class Motor:
 
 
 door = GarageDoor(Motor(), Alarm())
-door.push_button()
-door.finish_opening()
+door.push_button()  # motor up
+door.finish_opening()  # motor stop
 
-door.push_button()
-door.finish_closing()
+door.push_button()  # motor down & beep
 
-door.push_button()
-door.push_button()
-door.push_button()
+door.finish_closing()  # motor stop
+
+door.push_button()  # motor up
+door.push_button()  # beep
+door.push_button()  # beep

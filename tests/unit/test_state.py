@@ -257,3 +257,172 @@ class TestCallbacks(unittest.TestCase):
                 call('to_any', obj, State.B, State.A),
             ]
         )
+
+    def test_enter_state_callbaks(self):
+        callback_mock = MagicMock()
+
+        class Stub:
+            state = StateDescriptor(State, State.A)
+
+            to_b = state.transition(State.A, State.B)
+            to_c = state.transition(State.B, State.C)
+            to_a = state.transition([State.B, State.C], State.A)
+
+            @state.on_state_entered(State.A)  # type: ignore
+            def on_a_entered(self, from_state: State, to_state: State):
+                callback_mock('A_entered', self, from_state, to_state)
+
+            @state.on_state_entered(State.B)  # type: ignore
+            def on_b_entered(self, from_state: State, to_state: State):
+                callback_mock('B_entered', self, from_state, to_state)
+
+            @state.on_state_entered(State.C)  # type: ignore
+            def on_c_entered(self, from_state: State, to_state: State):
+                callback_mock('C_entered', self, from_state, to_state)
+
+            @state.on_state_entered  # type: ignore
+            def on_any_entered(self, from_state: State, to_state: State):
+                callback_mock('any_entered', self, from_state, to_state)
+
+            @state.on_state_entered(State.A, State.B)  # type: ignore
+            def on_a_b_entered(self, from_state: State, to_state: State):
+                callback_mock('AB_entered', self, from_state, to_state)
+
+        obj = Stub()
+
+        obj.to_b()
+        callback_mock.assert_has_calls(
+            [
+                call('any_entered', obj, State.A, State.B),
+                call('B_entered', obj, State.A, State.B),
+                call('AB_entered', obj, State.A, State.B),
+            ],
+            any_order=True,
+        )
+        callback_mock.reset_mock()
+
+        obj.to_c()
+        callback_mock.assert_has_calls(
+            [
+                call('any_entered', obj, State.B, State.C),
+                call('C_entered', obj, State.B, State.C),
+            ],
+            any_order=True,
+        )
+        callback_mock.reset_mock()
+
+        obj.to_a()
+        callback_mock.assert_has_calls(
+            [
+                call('any_entered', obj, State.C, State.A),
+                call('AB_entered', obj, State.C, State.A),
+                call('A_entered', obj, State.C, State.A),
+            ],
+            any_order=True,
+        )
+        callback_mock.reset_mock()
+
+        obj.to_b()
+        callback_mock.assert_has_calls(
+            [
+                call('any_entered', obj, State.A, State.B),
+                call('B_entered', obj, State.A, State.B),
+                call('AB_entered', obj, State.A, State.B),
+            ],
+            any_order=True,
+        )
+        callback_mock.reset_mock()
+
+        obj.to_a()
+        callback_mock.assert_has_calls(
+            [
+                call('AB_entered', obj, State.B, State.A),
+                call('A_entered', obj, State.B, State.A),
+                call('any_entered', obj, State.B, State.A),
+            ],
+            any_order=True,
+        )
+
+    def test_exit_state_callbaks(self):
+        callback_mock = MagicMock()
+
+        class Stub:
+            state = StateDescriptor(State, State.A)
+
+            to_b = state.transition(State.A, State.B)
+            to_c = state.transition(State.B, State.C)
+            to_a = state.transition([State.B, State.C], State.A)
+
+            @state.on_state_exited(State.A)  # type: ignore
+            def on_a_exited(self, from_state: State, to_state: State):
+                callback_mock('A_exited', self, from_state, to_state)
+
+            @state.on_state_exited(State.B)  # type: ignore
+            def on_b_exited(self, from_state: State, to_state: State):
+                callback_mock('B_exited', self, from_state, to_state)
+
+            @state.on_state_exited(State.C)  # type: ignore
+            def on_c_exited(self, from_state: State, to_state: State):
+                callback_mock('C_exited', self, from_state, to_state)
+
+            @state.on_state_exited  # type: ignore
+            def on_any_exited(self, from_state: State, to_state: State):
+                callback_mock('any_exited', self, from_state, to_state)
+
+            @state.on_state_exited(State.A, State.B)  # type: ignore
+            def on_a_b_exited(self, from_state: State, to_state: State):
+                callback_mock('AB_exited', self, from_state, to_state)
+
+        obj = Stub()
+
+        obj.to_b()
+        callback_mock.assert_has_calls(
+            [
+                call('any_exited', obj, State.A, State.B),
+                call('A_exited', obj, State.A, State.B),
+                call('AB_exited', obj, State.A, State.B),
+            ],
+            any_order=True,
+        )
+        callback_mock.reset_mock()
+
+        obj.to_c()
+        callback_mock.assert_has_calls(
+            [
+                call('any_exited', obj, State.B, State.C),
+                call('B_exited', obj, State.B, State.C),
+            ],
+            any_order=True,
+        )
+        callback_mock.reset_mock()
+
+        obj.to_a()
+        callback_mock.assert_has_calls(
+            [
+                call('any_exited', obj, State.C, State.A),
+                call('C_exited', obj, State.C, State.A),
+            ],
+            any_order=True,
+        )
+        callback_mock.reset_mock()
+
+        obj.to_b()
+        callback_mock.assert_has_calls(
+            [
+                call('any_exited', obj, State.A, State.B),
+                call('A_exited', obj, State.A, State.B),
+                call('AB_exited', obj, State.A, State.B),
+            ],
+            any_order=True,
+        )
+        callback_mock.reset_mock()
+
+        obj.to_a()
+        callback_mock.assert_has_calls(
+            [
+                call('AB_exited', obj, State.B, State.A),
+                call('B_exited', obj, State.B, State.A),
+                call('any_exited', obj, State.B, State.A),
+            ],
+            any_order=True,
+        )

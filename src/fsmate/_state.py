@@ -268,13 +268,6 @@ class StateDescriptor:
     def on_state_exited(
         self, *states: Enum
     ) -> Callable[[Callable[[object, Enum, Enum], Any]], Callable[[object, Enum, Enum], Any]]:
-        if states:
-            for state in states:
-                if state not in self._all_states:
-                    raise ValueError('Target state not found', state)
-        else:
-            states = tuple(self._all_states)
-
         def wrapper(
             func: Callable[[object, Enum, Enum], Any],
         ) -> Callable[[object, Enum, Enum], Any]:
@@ -282,23 +275,34 @@ class StateDescriptor:
                 self._exit_state_callbacks[state].add(func)
             return func
 
+        if len(states) == 1 and callable(states[0]) and not isinstance(states[0], Enum):
+            func = states[0]
+            states = tuple(self._all_states)
+            return wrapper(func)
+        else:
+            for state in states:
+                if state not in self._all_states:
+                    raise ValueError('Target state not found', state)
+
         return wrapper
 
     def on_state_entered(
         self, *states: Enum
     ) -> Callable[[Callable[[object, Enum, Enum], Any]], Callable[[object, Enum, Enum], Any]]:
-        if states:
-            for state in states:
-                if state not in self._all_states:
-                    raise ValueError('Target state not found', state)
-        else:
-            states = tuple(self._all_states)
-
         def wrapper(
             func: Callable[[object, Enum, Enum], Any],
         ) -> Callable[[object, Enum, Enum], Any]:
             for state in states:
                 self._enter_state_callbacks[state].add(func)
             return func
+
+        if len(states) == 1 and callable(states[0]) and not isinstance(states[0], Enum):
+            func = states[0]
+            states = tuple(self._all_states)
+            return wrapper(func)
+        else:
+            for state in states:
+                if state not in self._all_states:
+                    raise ValueError('Target state not found', state)
 
         return wrapper

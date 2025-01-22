@@ -1,25 +1,28 @@
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 from collections import defaultdict
 from collections.abc import Collection
 from enum import Enum
-from typing import Any, Callable, Generic, NoReturn, Optional, Protocol, TypeVar, Union
-from typing_extensions import ParamSpec
+from typing import Any, Callable, Generic, NoReturn, Optional, TypeVar, Union, overload, Type
+from typing_extensions import ParamSpec, Concatenate
 
 
 class ImpossibleTransitionError(Exception):
     pass
 
 
-class StateStorage(Protocol):
+class StateStorage(ABC):
+    @abstractmethod
     def get_state(self, instance: object) -> Enum:
         raise NotImplementedError
 
+    @abstractmethod
     def set_state(self, instance: object, state: Enum) -> None:
         raise NotImplementedError
 
 
-class AttributeStateStorage:
+class AttributeStateStorage(StateStorage):
     def __init__(self, attr_name: str) -> None:
         self._attr_name = attr_name
 
@@ -30,12 +33,22 @@ class AttributeStateStorage:
         return setattr(instance, self._attr_name, state)
 
 
-class ProxyStateStorage:
+class ProxyStateStorage(StateStorage):
     def __init__(
         self, getter: Callable[[object], Enum], setter: Callable[[object, Enum], None]
     ) -> None:
-        self.get_state = getter
-        self.set_state = setter
+        self._get_state = getter
+        self._set_state = setter
+
+    def get_state(self, instance: object) -> Enum:
+        return self._get_state(instance)
+
+    def set_state(self, instance: object, state: Enum) -> None:
+        return self._set_state(instance, state)
+
+
+_Instance = TypeVar('_Instance')
+_TransitionCallable = Callable[[], None]
 
 
 class StateTransition:
@@ -52,9 +65,17 @@ class StateTransition:
 
         self._callbacks: list[Callable] = []
 
+    @overload
+    def __get__(self, instance: None, owner: Type[_Instance]) -> 'StateTransition':
+        pass
+
+    @overload
+    def __get__(self, instance: _Instance, owner: Type[_Instance]) -> _TransitionCallable:
+        pass
+
     def __get__(
-        self, instance: object, objtype: type
-    ) -> Union['StateTransition', Callable[[], None]]:
+        self, instance: Union[_Instance, None], owner: Type[_Instance]
+    ) -> Union['StateTransition', _TransitionCallable]:
         if instance is None:
             return self
 
@@ -69,9 +90,6 @@ class StateTransition:
 
         return _transition
 
-    def __call__(self) -> None:
-        pass
-
     def __repr__(self) -> str:
         return f'{self.__class__.__name__}(source={self._source!r}, dest={self._dest!r}, state_storage={self._storage!r})'
 
@@ -79,20 +97,27 @@ class StateTransition:
         self._callbacks.append(func)
 
 
-T = TypeVar('T')
-P = ParamSpec('P')
+_MethodReturnType = TypeVar('_MethodReturnType')
+_MethodArgs = ParamSpec('_MethodArgs')
 
 
-class StateDispatcher(Generic[P, T]):
+class StateDispatcher(Generic[_Instance, _MethodArgs, _MethodReturnType]):
     def __init__(
-        self, state_storage: StateStorage, all_states: type[Enum], fallback: Callable[P, T]
+        self,
+        state_storage: StateStorage,
+        all_states: type[Enum],
+        fallback: Callable[Concatenate[_Instance, _MethodArgs], _MethodReturnType],
     ) -> None:
         self._all_states = all_states
         self._fallback = fallback
         self._state_storage = state_storage
-        self._dispatch_table: dict[Enum, Callable[P, T]] = {}
+        self._dispatch_table: dict[
+            Enum, Callable[Concatenate[_Instance, _MethodArgs], _MethodReturnType]
+        ] = {}
 
-    def register(self, func: Callable[P, T], *states: Enum) -> None:
+    def register(
+        self, func: Callable[Concatenate[_Instance, _MethodArgs], _MethodReturnType], *states: Enum
+    ) -> None:
         for state in states:
             if state not in self._all_states:
                 raise ValueError('Target state not found', state)
@@ -102,31 +127,58 @@ class StateDispatcher(Generic[P, T]):
 
             self._dispatch_table[state] = func
 
-    def _dispatch(self, state: Enum) -> Callable[P, T]:
+    def _get_dispatched_func(
+        self, state: Enum
+    ) -> Callable[Concatenate[_Instance, _MethodArgs], _MethodReturnType]:
         return self._dispatch_table.get(state, self._fallback)
 
-    def dispatch(self, instance: object, *args: P.args, **kwargs: P.kwargs) -> T:
+    def dispatch(
+        self, instance: _Instance, *args: _MethodArgs.args, **kwargs: _MethodArgs.kwargs
+    ) -> _MethodReturnType:
         current_state = self._state_storage.get_state(instance)
-        func = self._dispatch(current_state)
+        func = self._get_dispatched_func(current_state)
+        print(func, args, kwargs, self._fallback)
+        return func(instance, *args, **kwargs)
 
-        return func(*args, **kwargs)
 
-
-class StateDispatchedMethod(Generic[P, T]):
-    def __init__(self, dispatcher: StateDispatcher[P, T]) -> None:
+class StateDispatchedMethod(Generic[_Instance, _MethodArgs, _MethodReturnType]):
+    def __init__(
+        self, dispatcher: StateDispatcher[_Instance, _MethodArgs, _MethodReturnType]
+    ) -> None:
         self._dispatcher = dispatcher
 
-    def __get__(self, instance: object, objtype: type) -> Callable[P, T]:
-        if instance is None:
-            return self  # type: ignore[return-value]
+    @overload
+    def __get__(self, instance: None, owner: Type[_Instance]) -> 'StateDispatchedMethod':
+        pass
 
-        def dispatched_method(*args: P.args, **kwargs: P.kwargs) -> T:
-            return self._dispatcher.dispatch(instance, instance, *args, **kwargs)  # type: ignore[arg-type]
+    @overload
+    def __get__(
+        self, instance: _Instance, owner: Type[_Instance]
+    ) -> Callable[_MethodArgs, _MethodReturnType]:
+        pass
+
+    def __get__(
+        self, instance: Union[None, _Instance], owner: Type[_Instance]
+    ) -> Union[Callable[_MethodArgs, _MethodReturnType], 'StateDispatchedMethod']:
+        if instance is None:
+            return self
+
+        def dispatched_method(
+            *args: _MethodArgs.args, **kwargs: _MethodArgs.kwargs
+        ) -> _MethodReturnType:
+            return self._dispatcher.dispatch(instance, *args, **kwargs)
 
         return dispatched_method
 
-    def overload(self, *states: Enum) -> Callable[[Callable[P, T]], 'StateDispatchedMethod[P, T]']:
-        def deco(meth: Callable[P, T]) -> 'StateDispatchedMethod[P, T]':
+    def overload(
+        self, *states: Enum
+    ) -> Callable[
+        [Callable[Concatenate[_Instance, _MethodArgs], _MethodReturnType]],
+        'StateDispatchedMethod[_Instance, _MethodArgs, _MethodReturnType]',
+    ]:
+        def deco(
+            meth: Callable[Concatenate[_Instance, _MethodArgs], _MethodReturnType],
+        ) -> 'StateDispatchedMethod[_Instance, _MethodArgs, _MethodReturnType]':
             self._dispatcher.register(meth, *states)
             return self
 
@@ -161,14 +213,24 @@ class StateDescriptor:
         """
         self._attr_name = attr_name
 
-    def __get__(self, instance: object, objtype: Optional[type]) -> Enum:
+    @overload
+    def __get__(self, instance: None, owner: Type[_Instance]) -> 'StateDescriptor':
+        pass
+
+    @overload
+    def __get__(self, instance: _Instance, owner: Type[_Instance]) -> Enum:
+        pass
+
+    def __get__(
+        self, instance: Union[_Instance, None], owner: Type[_Instance]
+    ) -> Union[Enum, 'StateDescriptor']:
         """
         Get current state from owner object
         """
 
         # return descriptor itself when called from class
         if instance is None:
-            return self  # type: ignore[return-value]
+            return self
 
         return self._get_state(instance)
 
@@ -230,7 +292,9 @@ class StateDescriptor:
 
         return transition
 
-    def dispatch(self, method: Callable[P, T]) -> StateDispatchedMethod[P, T]:
+    def dispatch(
+        self, method: Callable[Concatenate[_Instance, _MethodArgs], _MethodReturnType]
+    ) -> StateDispatchedMethod[_Instance, _MethodArgs, _MethodReturnType]:
         dispatcher = StateDispatcher(
             ProxyStateStorage(self._get_state, self._force_set_state), self._all_states, method
         )

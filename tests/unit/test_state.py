@@ -140,11 +140,11 @@ class TestMethodOverload(unittest.TestCase):
         dispatcher = StateDispatcher(storage, State, fallback)
         dispatcher.register(b_func, State.B)
 
-        self.assertEqual(dispatcher.dispatch(None, 10), 10)
+        self.assertEqual(dispatcher.dispatch(10), 10)
         storage.set_state(None, State.B)
-        self.assertEqual(dispatcher.dispatch(None, 10), 20)
+        self.assertEqual(dispatcher.dispatch(10), 20)
         storage.set_state(None, State.C)
-        self.assertEqual(dispatcher.dispatch(None, 10), 10)
+        self.assertEqual(dispatcher.dispatch(10), 10)
 
         with self.assertRaisesRegex(ValueError, 'Target state not found'):
             dispatcher.register(lambda x: x, WrongState.D)

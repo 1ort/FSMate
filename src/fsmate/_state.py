@@ -8,47 +8,50 @@ from typing import Any, Callable, Generic, NoReturn, Optional, TypeVar, Union, o
 from typing_extensions import ParamSpec, Concatenate
 
 
+_Instance = TypeVar('_Instance')
+_TransitionCallable = Callable[[], None]
+EnumType = TypeVar('EnumType', bound=Enum)
+
+
 class ImpossibleTransitionError(Exception):
     pass
 
 
-class StateStorage(ABC):
+class StateStorage(ABC, Generic[EnumType]):
     @abstractmethod
-    def get_state(self, instance: object) -> Enum:
+    def get_state(self, instance: Any) -> EnumType:
         raise NotImplementedError
 
     @abstractmethod
-    def set_state(self, instance: object, state: Enum) -> None:
+    def set_state(self, instance: Any, state: EnumType) -> None:
         raise NotImplementedError
 
 
-class AttributeStateStorage(StateStorage):
+class AttributeStateStorage(StateStorage[EnumType]):
     def __init__(self, attr_name: str) -> None:
         self._attr_name = attr_name
 
-    def get_state(self, instance: object) -> Enum:
+    def get_state(self, instance: Any) -> EnumType:
         return getattr(instance, self._attr_name)  # type: ignore[no-any-return]
 
-    def set_state(self, instance: object, state: Enum) -> None:
+    def set_state(self, instance: Any, state: EnumType) -> None:
         return setattr(instance, self._attr_name, state)
 
 
-class ProxyStateStorage(StateStorage):
+class ProxyStateStorage(StateStorage[EnumType]):
     def __init__(
-        self, getter: Callable[[object], Enum], setter: Callable[[object, Enum], None]
+        self,
+        getter: Callable[[_Instance], EnumType],
+        setter: Callable[[_Instance, EnumType], None],
     ) -> None:
         self._get_state = getter
         self._set_state = setter
 
-    def get_state(self, instance: object) -> Enum:
+    def get_state(self, instance: Any) -> EnumType:
         return self._get_state(instance)
 
-    def set_state(self, instance: object, state: Enum) -> None:
+    def set_state(self, instance: Any, state: EnumType) -> None:
         return self._set_state(instance, state)
-
-
-_Instance = TypeVar('_Instance')
-_TransitionCallable = Callable[[], None]
 
 
 class StateTransition:
@@ -58,11 +61,12 @@ class StateTransition:
     Raises ImpossibleTransitionError otherwise
     """
 
-    def __init__(self, source: Collection[Enum], dest: Enum, state_storage: StateStorage) -> None:
+    def __init__(
+        self, source: Collection[EnumType], dest: EnumType, state_storage: StateStorage
+    ) -> None:
         self._source = source
         self._dest = dest
         self._storage = state_storage
-
         self._callbacks: list[Callable] = []
 
     @overload
@@ -101,22 +105,24 @@ _MethodReturnType = TypeVar('_MethodReturnType')
 _MethodArgs = ParamSpec('_MethodArgs')
 
 
-class StateDispatcher(Generic[_Instance, _MethodArgs, _MethodReturnType]):
+class StateDispatcher(Generic[EnumType, _Instance, _MethodArgs, _MethodReturnType]):
     def __init__(
         self,
         state_storage: StateStorage,
-        all_states: type[Enum],
+        all_states: type[EnumType],
         fallback: Callable[Concatenate[_Instance, _MethodArgs], _MethodReturnType],
     ) -> None:
         self._all_states = all_states
         self._fallback = fallback
         self._state_storage = state_storage
         self._dispatch_table: dict[
-            Enum, Callable[Concatenate[_Instance, _MethodArgs], _MethodReturnType]
+            EnumType, Callable[Concatenate[_Instance, _MethodArgs], _MethodReturnType]
         ] = {}
 
     def register(
-        self, func: Callable[Concatenate[_Instance, _MethodArgs], _MethodReturnType], *states: Enum
+        self,
+        func: Callable[Concatenate[_Instance, _MethodArgs], _MethodReturnType],
+        *states: EnumType,
     ) -> None:
         for state in states:
             if state not in self._all_states:
@@ -128,7 +134,7 @@ class StateDispatcher(Generic[_Instance, _MethodArgs, _MethodReturnType]):
             self._dispatch_table[state] = func
 
     def _get_dispatched_func(
-        self, state: Enum
+        self, state: EnumType
     ) -> Callable[Concatenate[_Instance, _MethodArgs], _MethodReturnType]:
         return self._dispatch_table.get(state, self._fallback)
 
@@ -141,9 +147,9 @@ class StateDispatcher(Generic[_Instance, _MethodArgs, _MethodReturnType]):
         return func(instance, *args, **kwargs)
 
 
-class StateDispatchedMethod(Generic[_Instance, _MethodArgs, _MethodReturnType]):
+class StateDispatchedMethod(Generic[EnumType, _Instance, _MethodArgs, _MethodReturnType]):
     def __init__(
-        self, dispatcher: StateDispatcher[_Instance, _MethodArgs, _MethodReturnType]
+        self, dispatcher: StateDispatcher[EnumType, _Instance, _MethodArgs, _MethodReturnType]
     ) -> None:
         self._dispatcher = dispatcher
 
@@ -171,25 +177,29 @@ class StateDispatchedMethod(Generic[_Instance, _MethodArgs, _MethodReturnType]):
         return dispatched_method
 
     def overload(
-        self, *states: Enum
+        self, *states: EnumType
     ) -> Callable[
         [Callable[Concatenate[_Instance, _MethodArgs], _MethodReturnType]],
-        'StateDispatchedMethod[_Instance, _MethodArgs, _MethodReturnType]',
+        'StateDispatchedMethod[EnumType, _Instance, _MethodArgs, _MethodReturnType]',
     ]:
         def deco(
             meth: Callable[Concatenate[_Instance, _MethodArgs], _MethodReturnType],
-        ) -> 'StateDispatchedMethod[_Instance, _MethodArgs, _MethodReturnType]':
+        ) -> 'StateDispatchedMethod[EnumType, _Instance, _MethodArgs, _MethodReturnType]':
             self._dispatcher.register(meth, *states)
             return self
 
         return deco
 
 
-class StateDescriptor:
+_ReturnType = TypeVar('_ReturnType')
+_CallbackType = Callable[[_Instance, EnumType, EnumType], _ReturnType]
+
+
+class StateDescriptor(Generic[EnumType]):
     def __init__(
         self,
-        states: type[Enum],
-        initial_state: Optional[Enum] = None,
+        states: type[EnumType],
+        initial_state: Optional[EnumType] = None,
         state_storage: Optional[StateStorage] = None,
     ):
         if initial_state is None == state_storage is None:
@@ -200,14 +210,10 @@ class StateDescriptor:
         self._state_storage = state_storage
         self._attr_name: Optional[str] = None
         self._transitions: list[StateTransition] = []
-        self._enter_state_callbacks: dict[Enum, set[Callable[[object, Enum, Enum], Any]]] = (
-            defaultdict(set)
-        )
-        self._exit_state_callbacks: dict[Enum, set[Callable[[object, Enum, Enum], Any]]] = (
-            defaultdict(set)
-        )
+        self._enter_state_callbacks: dict[EnumType, set[_CallbackType]] = defaultdict(set)
+        self._exit_state_callbacks: dict[EnumType, set[_CallbackType]] = defaultdict(set)
 
-    def __set_name__(self, owner: type, attr_name: str) -> None:
+    def __set_name__(self, owner: Type[_Instance], attr_name: str) -> None:
         """
         Called once at the creation of owner class
         """
@@ -218,12 +224,12 @@ class StateDescriptor:
         pass
 
     @overload
-    def __get__(self, instance: _Instance, owner: Type[_Instance]) -> Enum:
+    def __get__(self, instance: _Instance, owner: Type[_Instance]) -> EnumType:
         pass
 
     def __get__(
         self, instance: Union[_Instance, None], owner: Type[_Instance]
-    ) -> Union[Enum, 'StateDescriptor']:
+    ) -> Union[EnumType, 'StateDescriptor']:
         """
         Get current state from owner object
         """
@@ -234,7 +240,7 @@ class StateDescriptor:
 
         return self._get_state(instance)
 
-    def _get_state(self, instance: object) -> Enum:
+    def _get_state(self, instance: _Instance) -> EnumType:
         if self._state_storage:
             return self._state_storage.get_state(instance)
 
@@ -248,7 +254,7 @@ class StateDescriptor:
                 self._initial_state,
             )
 
-    def _force_set_state(self, instance: object, state: Enum) -> None:
+    def _force_set_state(self, instance: _Instance, state: EnumType) -> None:
         current_state = self._get_state(instance)
         if self._state_storage:
             self._state_storage.set_state(instance, state)
@@ -265,17 +271,19 @@ class StateDescriptor:
         for callback in self._enter_state_callbacks[state]:
             callback(instance, current_state, state)
 
-    def __set__(self, instance: object, value: Any) -> NoReturn:
+    def __set__(self, instance: _Instance, value: Any) -> NoReturn:
         """
         Forbit directly set state
         """
         raise AttributeError('Cannot change state directly. Use transitions')
 
-    def transition(self, source: Union[Enum, Collection[Enum]], dest: Enum) -> StateTransition:
+    def transition(
+        self, source: Union[EnumType, Collection[EnumType]], dest: EnumType
+    ) -> StateTransition:
         """
         Create new transition callable
         """
-        # check if value is correct Enum
+        # check if value is correct EnumType
         if dest not in self._all_states:
             raise ValueError('Destination state not found', dest)
 
@@ -294,21 +302,33 @@ class StateDescriptor:
 
     def dispatch(
         self, method: Callable[Concatenate[_Instance, _MethodArgs], _MethodReturnType]
-    ) -> StateDispatchedMethod[_Instance, _MethodArgs, _MethodReturnType]:
+    ) -> StateDispatchedMethod[EnumType, _Instance, _MethodArgs, _MethodReturnType]:
         dispatcher = StateDispatcher(
             ProxyStateStorage(self._get_state, self._force_set_state), self._all_states, method
         )
         dispatched_method = StateDispatchedMethod(dispatcher)
         return dispatched_method
 
+    @overload
+    def on_transition(self, func: _CallbackType, /) -> _CallbackType:
+        pass
+
+    @overload
     def on_transition(
-        self, *transitions: StateTransition
-    ) -> Callable[[Callable[[object, Enum, Enum], Any]], Callable[[object, Enum, Enum], Any]]:
+        self,
+        /,
+        *transitions: StateTransition,
+    ) -> Callable[[_CallbackType], _CallbackType]:
+        pass
+
+    def on_transition(
+        self, *transitions: Union[StateTransition, _CallbackType]
+    ) -> Union[_CallbackType, Callable[[_CallbackType], _CallbackType]]:
         def wrapper(
-            func: Callable[[object, Enum, Enum], Any],
-        ) -> Callable[[object, Enum, Enum], Any]:
+            func: Callable[[object, EnumType, EnumType], _ReturnType],
+        ) -> Callable[[object, EnumType, EnumType], _ReturnType]:
             for transition in transitions:
-                transition._register_callback(func)
+                transition._register_callback(func)  # type: ignore
             return func
 
         if (
@@ -329,14 +349,26 @@ class StateDescriptor:
 
         return wrapper
 
+    @overload
+    def on_state_exited(self, func: _CallbackType, /) -> _CallbackType:
+        pass
+
+    @overload
     def on_state_exited(
-        self, *states: Enum
-    ) -> Callable[[Callable[[object, Enum, Enum], Any]], Callable[[object, Enum, Enum], Any]]:
+        self,
+        /,
+        *states: EnumType,
+    ) -> Callable[[_CallbackType], _CallbackType]:
+        pass
+
+    def on_state_exited(
+        self, *states: Union[EnumType, _CallbackType]
+    ) -> Union[_CallbackType, Callable[[_CallbackType], _CallbackType]]:
         def wrapper(
-            func: Callable[[object, Enum, Enum], Any],
-        ) -> Callable[[object, Enum, Enum], Any]:
+            func: _CallbackType,
+        ) -> _CallbackType:
             for state in states:
-                self._exit_state_callbacks[state].add(func)
+                self._exit_state_callbacks[state].add(func)  # type: ignore[index]
             return func
 
         if len(states) == 1 and callable(states[0]) and not isinstance(states[0], Enum):
@@ -350,14 +382,26 @@ class StateDescriptor:
 
         return wrapper
 
+    @overload
+    def on_state_entered(self, func: _CallbackType, /) -> _CallbackType:
+        pass
+
+    @overload
     def on_state_entered(
-        self, *states: Enum
-    ) -> Callable[[Callable[[object, Enum, Enum], Any]], Callable[[object, Enum, Enum], Any]]:
+        self,
+        /,
+        *states: EnumType,
+    ) -> Callable[[_CallbackType], _CallbackType]:
+        pass
+
+    def on_state_entered(
+        self, *states: Union[EnumType, _CallbackType]
+    ) -> Union[_CallbackType, Callable[[_CallbackType], _CallbackType]]:
         def wrapper(
-            func: Callable[[object, Enum, Enum], Any],
-        ) -> Callable[[object, Enum, Enum], Any]:
+            func: _CallbackType,
+        ) -> _CallbackType:
             for state in states:
-                self._enter_state_callbacks[state].add(func)
+                self._enter_state_callbacks[state].add(func)  # type: ignore[index]
             return func
 
         if len(states) == 1 and callable(states[0]) and not isinstance(states[0], Enum):
@@ -368,5 +412,4 @@ class StateDescriptor:
             for state in states:
                 if state not in self._all_states:
                     raise ValueError('Target state not found', state)
-
         return wrapper

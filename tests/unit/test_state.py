@@ -189,23 +189,23 @@ class TestCallbacks(unittest.TestCase):
             to_c = state.transition(State.B, State.C)
             to_a = state.transition([State.B, State.C], State.A)
 
-            @state.on_transition(to_b)  # type: ignore
+            @state.on_transition(to_b)
             def on_to_b(self, from_state: State, to_state: State) -> None:
                 callback_mock('to_b', self, from_state, to_state)
 
-            @state.on_transition(to_c)  # type: ignore
+            @state.on_transition(to_c)
             def on_to_c(self, from_state: State, to_state: State) -> None:
                 callback_mock('to_c', self, from_state, to_state)
 
-            @state.on_transition(to_a)  # type: ignore
+            @state.on_transition(to_a)
             def on_to_a(self, from_state: State, to_state: State) -> None:
                 callback_mock('to_a', self, from_state, to_state)
 
-            @state.on_transition(to_b, to_c)  # type: ignore
-            def on_to_b_to_c(self, from_state: State, to_state: State):
+            @state.on_transition(to_b, to_c)
+            def on_to_b_to_c(self, from_state: State, to_state: State) -> None:
                 callback_mock('to_b_to_c', self, from_state, to_state)
 
-            @state.on_transition  # type: ignore
+            @state.on_transition
             def on_to_any(self, from_state: State, to_state: State) -> None:
                 callback_mock('to_any', self, from_state, to_state)
 
@@ -268,24 +268,24 @@ class TestCallbacks(unittest.TestCase):
             to_c = state.transition(State.B, State.C)
             to_a = state.transition([State.B, State.C], State.A)
 
-            @state.on_state_entered(State.A)  # type: ignore
-            def on_a_entered(self, from_state: State, to_state: State):
+            @state.on_state_entered(State.A)
+            def on_a_entered(self, from_state: State, to_state: State) -> None:
                 callback_mock('A_entered', self, from_state, to_state)
 
-            @state.on_state_entered(State.B)  # type: ignore
-            def on_b_entered(self, from_state: State, to_state: State):
+            @state.on_state_entered(State.B)
+            def on_b_entered(self, from_state: State, to_state: State) -> None:
                 callback_mock('B_entered', self, from_state, to_state)
 
-            @state.on_state_entered(State.C)  # type: ignore
-            def on_c_entered(self, from_state: State, to_state: State):
+            @state.on_state_entered(State.C)
+            def on_c_entered(self, from_state: State, to_state: State) -> None:
                 callback_mock('C_entered', self, from_state, to_state)
 
-            @state.on_state_entered  # type: ignore
-            def on_any_entered(self, from_state: State, to_state: State):
+            @state.on_state_entered
+            def on_any_entered(self, from_state: State, to_state: State) -> None:
                 callback_mock('any_entered', self, from_state, to_state)
 
-            @state.on_state_entered(State.A, State.B)  # type: ignore
-            def on_a_b_entered(self, from_state: State, to_state: State):
+            @state.on_state_entered(State.A, State.B)
+            def on_a_b_entered(self, from_state: State, to_state: State) -> None:
                 callback_mock('AB_entered', self, from_state, to_state)
 
         obj = Stub()
@@ -353,24 +353,24 @@ class TestCallbacks(unittest.TestCase):
             to_c = state.transition(State.B, State.C)
             to_a = state.transition([State.B, State.C], State.A)
 
-            @state.on_state_exited(State.A)  # type: ignore
-            def on_a_exited(self, from_state: State, to_state: State):
+            @state.on_state_exited(State.A)
+            def on_a_exited(self, from_state: State, to_state: State) -> None:
                 callback_mock('A_exited', self, from_state, to_state)
 
-            @state.on_state_exited(State.B)  # type: ignore
-            def on_b_exited(self, from_state: State, to_state: State):
+            @state.on_state_exited(State.B)
+            def on_b_exited(self, from_state: State, to_state: State) -> None:
                 callback_mock('B_exited', self, from_state, to_state)
 
-            @state.on_state_exited(State.C)  # type: ignore
-            def on_c_exited(self, from_state: State, to_state: State):
+            @state.on_state_exited(State.C)
+            def on_c_exited(self, from_state: State, to_state: State) -> None:
                 callback_mock('C_exited', self, from_state, to_state)
 
-            @state.on_state_exited  # type: ignore
-            def on_any_exited(self, from_state: State, to_state: State):
+            @state.on_state_exited
+            def on_any_exited(self, from_state: State, to_state: State) -> None:
                 callback_mock('any_exited', self, from_state, to_state)
 
-            @state.on_state_exited(State.A, State.B)  # type: ignore
-            def on_a_b_exited(self, from_state: State, to_state: State):
+            @state.on_state_exited(State.A, State.B)
+            def on_a_b_exited(self, from_state: State, to_state: State) -> None:
                 callback_mock('AB_exited', self, from_state, to_state)
 
         obj = Stub()
